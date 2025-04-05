@@ -68,9 +68,20 @@ class S4DKernel(nn.Module):
         k = torch.fft.irfft(k_f, n=2*L)[:, :L]  # [d_model, L]
         
         # Apply convolution
+        pad_left = (k.size(-1) - 1) // 2  # 511 for L=1024
+        pad_right = k.size(-1) // 2       # 512 for L=1024
+        
         u = u.transpose(1, 2)  # [batch, d_model, L]
-        y = F.conv1d(u, k.unsqueeze(1), bias=self.D, groups=self.d_model)  # [batch, d_model, L]
-        return y.transpose(1, 2)  # [batch, L, d_model]
+        u_padded = F.pad(u, (pad_left, pad_right))
+        
+        y = F.conv1d(
+            u_padded, 
+            k.unsqueeze(1),  # [d_model, 1, L]
+            bias=self.D,
+            groups=self.d_model,
+            padding=0
+        )
+        return y.transpose(1, 2) # [batch, L, d_model]
 
 class S4Layer(nn.Module):
     def __init__(self, d_model, n, l_max, dropout=0.1):
