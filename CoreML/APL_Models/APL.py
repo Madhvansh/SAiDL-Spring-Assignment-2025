@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchvision.models import resnet18
-import numpy as np
 import matplotlib.pyplot as plt
+import logging
+logging.getLogger("torchvision.datasets").setLevel(logging.WARNING)
 
 def add_symmetric_noise(dataset, eta = None, seed=42):
     # Generate random η if not provided
@@ -104,22 +104,56 @@ class FocalLoss(nn.Module):
         pt = torch.exp(-ce_loss)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
         return focal_loss.mean()
-# SAiDL-compliant ResNet-18
+class MAE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+    def forward(self, logits, targets):
+        probs = F.softmax(logits, dim=1)
+        mae = 2 * (1 - probs[torch.arange(len(targets)), targets])  # Correct MAE scale
+        return mae.mean()
+
+class RCE(nn.Module):
+    def __init__(self, A=-4):
+        super().__init__()
+        self.A = A
+        
+    def forward(self, logits, targets):
+        probs = F.softmax(logits, dim=1)
+        rce = -self.A * (1 - probs[torch.arange(len(targets)), targets])
+        return rce.mean()
+
+class APL(nn.Module):
+    def __init__(self, active_loss, passive_loss, alpha=1.0, beta=1.0):
+        super().__init__()
+        self.active = active_loss
+        self.passive = passive_loss
+        self.alpha = alpha
+        self.beta = beta
+        
+    def forward(self, logits, targets):
+        return self.alpha*self.active(logits, targets) + self.beta*self.passive(logits, targets)
 class ResNet(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
-        self.model = resnet18(num_classes=num_classes)
-        
-        # CIFAR-10 specific modifications
-        self.model.conv1 = nn.Conv2d(3, 64, kernel_size=3, 
-                                   stride=1, padding=1, bias=False)
-        self.model.maxpool = nn.Identity()
+        self.net = nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(128, num_classes)
+        )
         
     def forward(self, x):
-        return self.model(x)
+        return self.net(x)
 
-
-def train_model(eta, loss_fn, num_epochs=5):
+def train_model(eta, loss_fn, num_epochs=100):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     transform = transforms.Compose([
@@ -137,9 +171,7 @@ def train_model(eta, loss_fn, num_epochs=5):
     train_loader = DataLoader(noisy_train, batch_size=128, shuffle=True, num_workers=2)
     test_loader = DataLoader(test_set, batch_size=256, shuffle=False, num_workers=2)
 
-# Use this version
-    model = ResNet(num_classes=10).to(device)
-    print(f"Parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f}M")  # Should be ~11.18M
+    model = ResNet().to(device)
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     
@@ -193,28 +225,44 @@ def run_experiments():
         'CE': nn.CrossEntropyLoss(),
         'FL': FocalLoss(gamma=2),
         'NCE': NormalizedCrossEntropy(),
-        'NFL': NormalizedFocalLoss(gamma=2)
+        'NFL': NormalizedFocalLoss(gamma=2),
+        'MAE': MAE(),
+        'RCE': RCE(A=-4),
+        'NCE+MAE': APL(NormalizedCrossEntropy(), MAE(), alpha=1, beta=1),
+        'NCE+RCE': APL(NormalizedCrossEntropy(), RCE(A=-4), alpha=1, beta=1),
+        'NFL+MAE': APL(NormalizedFocalLoss(gamma=2), MAE(), alpha=1, beta=1),
+        'NFL+RCE': APL(NormalizedFocalLoss(gamma=2), RCE(A=-4), alpha=1, beta=1),
     }
     
     results = {eta: {} for eta in eta_values}
     
+    # Train all configurations
     for eta in eta_values:
         print(f"\n=== Training at η={eta} ===")
-        
         for loss_name, loss_fn in loss_configs.items():
             print(f"\nTraining {loss_name}...")
-            metrics = train_model(eta, loss_fn)
-            results[eta][loss_name] = {
-                'best_acc': metrics['best_acc'],
-                'loss_curve': metrics['train_loss'],
-                'acc_curve': metrics['test_acc']
-            }
+            metrics = train_model(eta, loss_fn, num_epochs=100)
+            results[eta][loss_name] = metrics['best_acc']
+            
     
     print("\nFinal Comparison:")
     print(f"{'Loss':<6} {'η=0.2':<8} {'η=0.4':<8} {'η=0.6':<8} {'η=0.8':<8}")
     for loss_name in loss_configs:
         acc_values = [f"{results[eta][loss_name]['best_acc']:.2f}%" for eta in eta_values]
         print(f"{loss_name:<6} {' '.join(acc_values)}")
-
+# Plot results
+    plt.figure(figsize=(12, 8))
+    for loss_name in loss_configs:
+        accs = [results[eta][loss_name] for eta in eta_values]
+        plt.plot(eta_values, accs, marker='o', label=loss_name)
+    
+    plt.xlabel('Noise Rate (η)')
+    plt.ylabel('Test Accuracy (%)')
+    plt.title('APL Framework: Robustness Comparison')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig('apl_comparison.png', bbox_inches='tight')
+    plt.show()
 if __name__ == "__main__":
     run_experiments()
