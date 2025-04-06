@@ -1,4 +1,3 @@
-<br>
 In CoreML, I have introduced symmetric noise such that for the Purpose of Data Prepration, <br>
 The η is random. Also, the symmetric noise function has a provision for η to be fixed like - <br>
 0.6, etc. <br>
