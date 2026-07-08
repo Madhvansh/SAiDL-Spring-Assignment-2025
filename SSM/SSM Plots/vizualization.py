@@ -288,47 +288,9 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.savefig('moving_avg.pdf', bbox_inches='tight')
 
-# 7. Confusion Matrix (Mockup - Needs True Labels)
-# For actual implementation, collect predictions during evaluation
-classes = ['airplane', 'car', 'bird', 'cat', 'deer',
-           'dog', 'frog', 'horse', 'ship', 'truck']
-
-# Mock confusion matrix data
-cm = np.random.randn(10, 10)
-np.fill_diagonal(cm, np.abs(np.diag(cm)) + 5)  # Emphasize diagonal
-
-plt.figure(figsize=(12, 10))
-plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-plt.colorbar()
-plt.xticks(np.arange(10), classes, rotation=45)
-plt.yticks(np.arange(10), classes)
-plt.title('Confusion Matrix (Mock Data)')
-plt.xlabel('Predicted')
-plt.ylabel('True')
-plt.tight_layout()
-plt.savefig('confusion_matrix.pdf')
-
-# 8. Learning Rate Schedule Visualization 
-# (Requires LR tracking during training)
-
-# Mock data based on OneCycle policy
-def mock_lr_schedule(epochs):
-    lr = np.zeros_like(epochs)
-    peak = 150
-    for i, e in enumerate(epochs):
-        if e < peak:
-            lr[i] = 5e-4 * (e/peak)
-        else:
-            lr[i] = 5e-4 * (1 - (e-peak)/(len(epochs)-peak))
-            
-    return lr
-
-lrs = mock_lr_schedule(epochs)
-
-plt.figure()
-plt.plot(epochs, lrs, color=colors[2], lw=2)
-plt.title('Learning Rate Schedule')
-plt.xlabel('Epochs')
-plt.ylabel('Learning Rate')
-plt.grid(True, alpha=0.3)
-plt.savefig('lr_schedule.pdf', bbox_inches='tight')
+# NOTE (ROADMAP L1/L2): two blocks were removed from this file — a placeholder
+# confusion-matrix figure drawn from np.random data, and a hand-drawn
+# LR-schedule curve. Both plotted invented data and must never ship as results.
+# The LR schedule is now regenerated from the real OneCycleLR configuration by
+# scripts/make_figures.py; the real confusion matrix will be produced from the
+# released checkpoint by scripts/eval_ssm.py (Tier 1, D3).
