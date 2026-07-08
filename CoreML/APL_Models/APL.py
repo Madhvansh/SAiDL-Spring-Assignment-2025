@@ -1,3 +1,6 @@
+import csv
+import os
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -155,7 +158,9 @@ class CIFARResNet(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-def train_model(eta, loss_fn, num_epochs=100):
+def train_model(eta, loss_fn, num_epochs=100, log_csv=None):
+    # log_csv: optional path; per-epoch metrics are appended and flushed each
+    # epoch so a partial run still leaves a usable log (Colab disconnects).
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     transform = transforms.Compose([
@@ -179,7 +184,17 @@ def train_model(eta, loss_fn, num_epochs=100):
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     
     metrics = {'train_loss': [], 'test_acc': [], 'best_acc': 0.0}
-    
+
+    csv_file = None
+    if log_csv:
+        csv_dir = os.path.dirname(log_csv)
+        if csv_dir:
+            os.makedirs(csv_dir, exist_ok=True)
+        csv_file = open(log_csv, 'w', newline='')
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(['epoch', 'train_loss', 'test_acc'])
+        csv_file.flush()
+
     for epoch in range(num_epochs):
         model.train()
         epoch_loss = 0.0
@@ -213,9 +228,15 @@ def train_model(eta, loss_fn, num_epochs=100):
         metrics['test_acc'].append(test_acc)
         metrics['best_acc'] = max(metrics['best_acc'], test_acc)
         
+        if csv_file:
+            csv_writer.writerow([epoch + 1, f'{avg_loss:.6f}', f'{test_acc:.2f}'])
+            csv_file.flush()
+
         print(f'Epoch {epoch+1:03d} | Loss: {avg_loss:.4f} | Acc: {test_acc:.2f}%')
         scheduler.step()
-    
+
+    if csv_file:
+        csv_file.close()
     return metrics
 
 # Updated Plotting
