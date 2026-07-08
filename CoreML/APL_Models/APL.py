@@ -49,24 +49,25 @@ def add_symmetric_noise(dataset, eta = None, seed=42):
     
     return dataset, noise_matrix, original_targets, eta
 
-# Load CIFAR-10 dataset
-train_dataset = CIFAR10(
-    root='./data', 
-    train=True, 
-    download=True,
-    transform=transforms.ToTensor()
-)
+def noise_sanity_demo():
+    # Load CIFAR-10 dataset
+    train_dataset = CIFAR10(
+        root='./data',
+        train=True,
+        download=True,
+        transform=transforms.ToTensor()
+    )
 
-# Then pass it to the noise function
-noisy_dataset, noise_matrix, original_targets, eta = add_symmetric_noise(train_dataset)
-noisy_targets = torch.tensor(noisy_dataset.targets)
+    # Then pass it to the noise function
+    noisy_dataset, noise_matrix, original_targets, eta = add_symmetric_noise(train_dataset)
+    noisy_targets = torch.tensor(noisy_dataset.targets)
 
-# Print statistics
-total_samples = original_targets.size(0)
-corrupted_count = (original_targets != noisy_targets).sum().item()
-print(f"\n Generated η: {eta:.2f}")
-print(f"Total samples: {total_samples}")
-print(f"Corrupted samples: {corrupted_count} ({corrupted_count/total_samples:.2%})\n")
+    # Print statistics
+    total_samples = original_targets.size(0)
+    corrupted_count = (original_targets != noisy_targets).sum().item()
+    print(f"\n Generated η: {eta:.2f}")
+    print(f"Total samples: {total_samples}")
+    print(f"Corrupted samples: {corrupted_count} ({corrupted_count/total_samples:.2%})\n")
 
 
 class NormalizedCrossEntropy(nn.Module):
@@ -117,18 +118,19 @@ class MAELoss(nn.Module):
         return torch.mean(mae)
     
 class RCE(nn.Module):
-    def __init__(self, A=-0.69):
+    # Reverse Cross Entropy, Ma et al. ICML 2020: closed form -A * (1 - p_y),
+    # from RCE = -sum_k p(k|x) * log q(k|x) with one-hot q and log(0) := A.
+    # The paper text sets A = -4. The authors' official repo instead clamps
+    # probabilities at 1e-4, i.e. effective A = ln(1e-4) ~= -9.21 -- a known
+    # upstream text/code inconsistency; we follow the paper text (A = -4).
+    def __init__(self, A=-4.0):
         super().__init__()
         self.A = A
-        
+
     def forward(self, logits, targets):
         probs = F.softmax(logits, dim=1)
-        batch_size, num_classes = logits.shape
-        one_hot = F.one_hot(targets, num_classes).float()
-        mask = torch.where(one_hot == 1, 0.0, 
-                          torch.exp(torch.tensor(self.A, device=logits.device)))
-        # Corrected line: Use log(1 - probs) for incorrect classes
-        return -torch.sum(mask * torch.log(1 - probs + 1e-8)) / batch_size
+        rce = -self.A * (1 - probs[torch.arange(logits.size(0)), targets])
+        return rce.mean()
 
 class APL(nn.Module):
     def __init__(self, active_loss, passive_loss, alpha=1.0, beta=1.0):
@@ -313,4 +315,5 @@ def run_experiments():
     return results
 
 if __name__ == "__main__":
+    noise_sanity_demo()
     final_results = run_experiments()
