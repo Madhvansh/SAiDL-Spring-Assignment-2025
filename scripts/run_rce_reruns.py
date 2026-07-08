@@ -13,9 +13,10 @@ restored RCE formula:
   - alpha=0.5 (NCE+RCE) and alpha=0.3 (NFL+RCE), beta=1: the values the
     original runs used — a deliberate, documented deviation from the paper's
     alpha=beta=1 convention, kept for comparability with the existing table.
-  - torch.manual_seed(42) before each run. (The original 32 runs seeded once
-    and trained sequentially, so their exact per-run RNG streams are not
-    reconstructable; per-run seeding is the closest well-defined protocol.)
+  - torch.manual_seed(42) before each run. Note add_symmetric_noise() itself
+    reseeds torch to 42 inside train_model — in the original runs too — so
+    noise, model init and shuffling follow the same per-run RNG stream as the
+    originals (up to GPU nondeterminism).
 
 Usage (from the repo root):  python scripts/run_rce_reruns.py --outdir results
 """
