@@ -1,12 +1,34 @@
+import argparse
+import csv
+import math
+import os
+import random
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms
-import math
 import torch.nn.functional as F
 from torchvision.transforms import AutoAugment, AutoAugmentPolicy
+
+
+# 0. Reproducibility (ROADMAP L9.3): seed torch/numpy/random + DataLoader workers
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def seed_worker(worker_id):
+    # Derive per-worker seeds from the torch-side seed so augmentation RNG in
+    # workers is reproducible (torch.initial_seed() is already per-worker).
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 # 1. S4D Kernel Implementation
 class S4DKernel(nn.Module):
@@ -157,30 +179,50 @@ class S4Model2D(nn.Module):
         return self.head(x)
 
 # 5. Training Configuration with Warmup
-def train_advanced():
+def train_advanced(seed=42, epochs=200, csv_path=None, ckpt_path=None):
+    set_seed(seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    train_loader = DataLoader(PatchedCIFAR10(), batch_size=128, 
-                              shuffle=True, num_workers=4, pin_memory=True)
-    test_loader = DataLoader(PatchedCIFAR10(train=False), 
-                             batch_size=256, shuffle=False, num_workers=4)
+
+    if csv_path is None:
+        csv_path = os.path.join('results', f'ssm_seed{seed}.csv')
+    if ckpt_path is None:
+        # Seed-suffixed so a rerun never overwrites the original evidence
+        # checkpoint (s4_2d_best.pth).
+        ckpt_path = f's4_2d_best_seed{seed}.pth'
+
+    loader_gen = torch.Generator()
+    loader_gen.manual_seed(seed)
+    train_loader = DataLoader(PatchedCIFAR10(), batch_size=128,
+                              shuffle=True, num_workers=4, pin_memory=True,
+                              worker_init_fn=seed_worker, generator=loader_gen)
+    test_loader = DataLoader(PatchedCIFAR10(train=False),
+                             batch_size=256, shuffle=False, num_workers=4,
+                             worker_init_fn=seed_worker)
 
     model = S4Model2D(d_model=512, n_layers=12).to(device)
-    
-    optimizer = optim.AdamW(model.parameters(), lr=5e-4, 
+
+    optimizer = optim.AdamW(model.parameters(), lr=5e-4,
                             weight_decay=0.1, betas=(0.9, 0.98))
-    
+
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=5e-4,
-        total_steps=200 * len(train_loader),
+        total_steps=epochs * len(train_loader),
         pct_start=0.05,
         anneal_strategy='cos'
     )
-    
+
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
+    csv_dir = os.path.dirname(csv_path)
+    if csv_dir:
+        os.makedirs(csv_dir, exist_ok=True)
+    csv_file = open(csv_path, 'w', newline='')
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(['epoch', 'train_loss', 'test_acc', 'lr'])
+    csv_file.flush()
+
     best_acc = 0
-    for epoch in range(200):
+    for epoch in range(epochs):
         model.train()
         total_loss = 0
         
@@ -209,11 +251,28 @@ def train_advanced():
         acc = 100 * correct / len(test_loader.dataset)
         if acc > best_acc:
             best_acc = acc
-            torch.save(model.state_dict(), 's4_2d_best.pth')
-        
-        print(f'Epoch {epoch+1}/200 | Loss: {total_loss/len(train_loader):.4f} | Acc: {acc:.2f}%')
+            torch.save(model.state_dict(), ckpt_path)
 
+        avg_loss = total_loss / len(train_loader)
+        csv_writer.writerow([epoch + 1, f'{avg_loss:.6f}', f'{acc:.2f}',
+                             f'{scheduler.get_last_lr()[0]:.8e}'])
+        csv_file.flush()
+
+        print(f'Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | Acc: {acc:.2f}%')
+
+    csv_file.close()
     print(f'Best Test Accuracy: {best_acc:.2f}%')
 
+
 if __name__ == "__main__":
-    train_advanced()
+    parser = argparse.ArgumentParser(
+        description='S4-style SSM on CIFAR-10 patch sequences (seeded, ROADMAP L9.3)')
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--csv', default=None,
+                        help='per-epoch metrics CSV (default: results/ssm_seed<seed>.csv)')
+    parser.add_argument('--ckpt', default=None,
+                        help='best-checkpoint path (default: s4_2d_best_seed<seed>.pth)')
+    args = parser.parse_args()
+    train_advanced(seed=args.seed, epochs=args.epochs,
+                   csv_path=args.csv, ckpt_path=args.ckpt)
