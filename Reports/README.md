@@ -1,38 +1,30 @@
-# Reports
+# Reports, corrections, and provenance
 
-The three original PDF reports (`CoreML.pdf`, `COREML_OUTPUT.pdf`, `SSM.pdf`)
-have been **withdrawn** from this repository and are being replaced by
-Markdown reports.
+The repository's earlier PDF reports were removed from the current tree after a review found claims and visual material that could not be traced cleanly to committed experiment evidence. The Git history is unchanged; the files remain available at commit `a5c4f17` for audit purposes.
 
-## Why
+They are replaced by:
 
-An internal audit found that parts of the PDFs were not supported by the code
-and logs in this repository — including a figure generated from random
-placeholder data that shipped with an invented caption, and several claims
-and numbers with no committed artifact behind them. No source files exist for
-the PDFs, so they cannot be patched; they are being rewritten from scratch as
-Markdown, where every number links to the committed evidence (notebook cell
-or `results/` CSV) that produced it.
+- [TRACK1_APL.md](TRACK1_APL.md), covering active-passive losses under symmetric label noise; and
+- [TRACK2_SSM.md](TRACK2_SSM.md), covering the custom S4-inspired image classifier.
 
-## Where the old PDFs live
+The replacement reports follow three rules:
 
-They remain retrievable from git history at commit `a5c4f17`:
+1. A number is labeled as a **recorded notebook output**, not as a rerun, unless a fresh machine-readable artifact exists.
+2. Known protocol limitations are stated next to the result they affect.
+3. Model names describe the committed code. “S4-inspired” does not mean an official S4/S4D reproduction.
 
+The dependency-free checker verifies that the notebook evidence referenced by both reports still exists:
+
+```bash
+python scripts/check_repository.py
 ```
-git show a5c4f17:Reports/CoreML.pdf        > CoreML.pdf
+
+To inspect the withdrawn PDFs without changing history:
+
+```bash
+git show a5c4f17:Reports/CoreML.pdf > CoreML.pdf
 git show a5c4f17:Reports/COREML_OUTPUT.pdf > COREML_OUTPUT.pdf
-git show a5c4f17:Reports/SSM.pdf           > SSM.pdf
+git show a5c4f17:Reports/SSM.pdf > SSM.pdf
 ```
 
-This is a deliberate, documented withdrawal — the history is untouched.
-
-## What replaces them
-
-- `TRACK1_APL.md` — Active-Passive Losses (Ma et al., ICML 2020) replication
-  under symmetric label noise on CIFAR-10 *(rewrite in progress)*
-- `TRACK2_SSM.md` — an S4-style SSM as a token mixer on CIFAR-10 patch
-  sequences *(rewrite in progress)*
-
-Each rewritten report will carry a **Corrections & Provenance** section that
-owns every fix made during the audit, with one-line explanations and links to
-the evidence.
+Those historical files should not be treated as the repository's current account of the experiments.
