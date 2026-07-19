@@ -1,0 +1,26 @@
+name: Bug or reproducibility problem
+description: Report a source, environment, or evidence mismatch
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: State the expected and observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include command, commit, environment, and relevant output without credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence impact
+      description: Does this affect a recorded notebook value or report statement?
+    validations:
+      required: true

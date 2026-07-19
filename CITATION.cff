@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you reuse this assignment code, cite the repository and the exact commit used."
+title: "SAiDL Spring Assignment 2025 - Reproducibility Archive"
+type: software
+authors:
+  - family-names: "Choksi"
+    given-names: "Madhvansh"
+repository-code: "https://github.com/Madhvansh/SAiDL-Spring-Assignment-2025"
+license: MIT
+keywords:
+  - noisy labels
+  - active-passive loss
+  - state-space model
+  - CIFAR-10
